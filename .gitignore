@@ -1,0 +1,12 @@
+# runtime & secrets
+.env
+.telegram.env
+data/
+*.log
+logs/
+# python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+bin/

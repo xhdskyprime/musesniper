@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="45">
+<title>Sniper Paper Bot — Dashboard</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0b0e14; color:#e6e9f0; font-family:system-ui,-apple-system,sans-serif; padding:20px; max-width:900px; margin:auto; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  .sub { color:#8b93a7; font-size:13px; margin-bottom:18px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px; }
+  .card { background:#141922; border:1px solid #232b3a; border-radius:14px; padding:16px 18px; }
+  .card .lbl { font-size:11px; letter-spacing:2px; color:#8b93a7; margin-bottom:6px; }
+  .card .big { font-size:28px; font-weight:800; }
+  .card .small { font-size:13px; color:#8b93a7; margin-top:4px; }
+  .green { color:#3ddc84; } .red { color:#ff5d5d; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; color:#8b93a7; font-size:11px; letter-spacing:1px; padding:10px 8px; border-bottom:1px solid #232b3a; }
+  td { padding:12px 8px; border-bottom:1px solid #1a2130; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; }
+  .pill.tp { background:rgba(61,220,132,.15); color:#3ddc84; }
+  .pill.sl { background:rgba(255,93,93,.15); color:#ff5d5d; }
+  .pill.info { background:rgba(120,160,255,.15); color:#7ea8ff; }
+  .sec { font-size:15px; font-weight:700; margin:22px 0 10px; letter-spacing:1px; }
+  .empty { color:#8b93a7; padding:20px; text-align:center; }
+  .foot { color:#5b6478; font-size:12px; text-align:center; margin-top:26px; }
+  .btn-sell { background:#2a1420; color:#ff7d7d; border:1px solid #5c2b35; border-radius:8px;
+              padding:7px 14px; font-size:13px; font-weight:700; cursor:pointer; }
+  .btn-sell:hover { background:#3d1a28; }
+  .notice { background:rgba(61,220,132,.12); border:1px solid rgba(61,220,132,.35); color:#3ddc84;
+            border-radius:10px; padding:10px 14px; font-size:13px; margin-bottom:14px; }
+</style>
+</head>
+<body>
+  <h1>🎯 Sniper Paper Bot <span style="font-weight:400;color:#8b93a7">· demo</span></h1>
+  <div class="sub">Modal virtual ${{ '%.0f'|format(start_cash) }} · data harga asli · update {{ now }} (auto-refresh 45 dtk)</div>
+  {% if sold %}<div class="notice">✅ Permintaan jual dikirim — bot mengeksekusi di harga pasar dalam ±1 menit.</div>{% endif %}
+
+  <div class="grid">
+    <div class="card"><div class="lbl">TOTAL ASET</div><div class="big">${{ '%.2f'|format(s.total) }}</div>
+      <div class="small">cash ${{ '%.2f'|format(s.cash) }} + coin ${{ '%.2f'|format(s.coin_value) }}</div></div>
+    <div class="card"><div class="lbl">UANG SIAP PAKAI</div><div class="big" style="color:#3ddc84">${{ '%.2f'|format(s.cash) }}</div>
+      <div class="small">bisa dibelanjakan</div></div>
+    <div class="card"><div class="lbl">NILAI DI COIN</div><div class="big">${{ '%.2f'|format(s.coin_value) }}</div>
+      <div class="small">{{ s.n_open }} posisi berjalan</div></div>
+    <div class="card"><div class="lbl">UNTUNG / RUGI</div>
+      <div class="big {{ 'green' if s.pnl>=0 else 'red' }}">{{ '%+.2f'|format(s.pnl) }}</div>
+      <div class="small">{{ '%+.1f'|format(s.pnl_pct) }}% dari modal</div></div>
+  </div>
+
+  <div class="sec">PORTOFOLIO ({{ positions|length }})</div>
+  <div class="card" style="padding:6px 10px">
+  {% if positions %}
+  <table>
+    <tr><th>COIN</th><th>ENTRY → KINI</th><th>X</th><th>UMUR</th><th>P&L</th><th>AKSI</th></tr>
+    {% for p in positions %}
+    <tr>
+      <td><b>{{ p.symbol }}</b><br><span style="color:#8b93a7;font-size:12px">{{ p.opened }}</span></td>
+      <td style="font-size:12px">${{ '%.8f'|format(p.entry) }}<br>→ ${{ '%.8f'|format(p.now) }}</td>
+      <td class="{{ 'green' if p.mult>=1 else 'red' }}"><b>{{ '%.2f'|format(p.mult) }}x</b>{% if p.tp1 %} <span class="pill tp">TP1 ✓</span>{% endif %}</td>
+      <td>{{ '%.1f'|format(p.age_h) }}j</td>
+      <td class="{{ 'green' if p.pnl>=0 else 'red' }}"><b>{{ '%+.2f'|format(p.pnl) }}</b></td>
+      <td><form method="post" action="/sell/{{ p.id }}" onsubmit="return confirm('Jual {{ p.symbol }} sekarang di harga pasar?')"><button class="btn-sell" type="submit">Jual</button></form></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">Belum ada posisi — bot sedang memindai token baru…</div>{% endif %}
+  </div>
+
+  <div class="sec">RIWAYAT TRADE</div>
+  <div class="card" style="padding:6px 10px">
+  {% if trades %}
+  <table>
+    <tr><th>WAKTU</th><th>AKSI</th><th>DETAIL</th></tr>
+    {% for t in trades %}
+    <tr>
+      <td style="color:#8b93a7;font-size:12px">{{ t.when }}</td>
+      <td>{% if t.side=='BUY' %}<span class="pill info">BUY</span>{% else %}<span class="pill {{ 'tp' if (t.pnl or 0)>=0 else 'sl' }}">SELL</span>{% endif %}</td>
+      <td style="font-size:13px"><b>{{ t.symbol }}</b> @ ${{ '%.8f'|format(t.price) }} · ${{ '%.2f'|format(t.usd) }}
+        {% if t.pnl is defined %} <span class="{{ 'green' if t.pnl>=0 else 'red' }}"><b>{{ '%+.2f'|format(t.pnl) }}</b></span>{% endif %}
+        {% if t.reason %}<br><span style="color:#8b93a7">{{ t.reason }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">Belum ada trade.</div>{% endif %}
+  </div>
+
+  <div class="foot">Paper trading — uang virtual, bukan nasihat finansial. DYOR.</div>
+</body>
+</html>
