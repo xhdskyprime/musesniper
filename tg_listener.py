@@ -14,6 +14,18 @@ DATA = os.path.join(BASE, 'data')
 TG = os.path.expanduser('~/workspace/skills/telegram/bin/tg')
 OFFSET_FILE = os.path.join(DATA, 'tg_offset.txt')
 HEARTBEAT_FILE = os.path.join(DATA, 'listener_heartbeat.txt')
+PUMP_DATA = os.path.expanduser('~/workspace/pump-sniper/data')
+BLACKLIST_FILE = os.path.join(PUMP_DATA, 'creator_blacklist.txt')
+PUMP_SELL_REQ = os.path.join(PUMP_DATA, 'sell_requests.json')
+ADDR_RE = None  # compiled lazily
+
+
+def valid_addr(a):
+    import re
+    global ADDR_RE
+    if ADDR_RE is None:
+        ADDR_RE = re.compile(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$')
+    return bool(ADDR_RE.match(a))
 
 
 def chat_id():
@@ -108,15 +120,112 @@ def cmd_status():
     return msg
 
 
+def cmd_blacklist(args):
+    entries = []
+    try:
+        with open(BLACKLIST_FILE) as f:
+            entries = [l.strip() for l in f if l.strip() and not l.startswith('#')]
+    except OSError:
+        pass
+    if not args:
+        if not entries:
+            return ('⛔ Blacklist kreator kosong.\n'
+                    'Kirim: /blacklist <alamat_creator>')
+        shown = '\n'.join('• ' + e[:16] + '…' for e in entries[-15:])
+        extra = '' if len(entries) <= 15 else f'\n… +{len(entries) - 15} lainnya'
+        return f'⛔ Blacklist kreator ({len(entries)}):\n{shown}{extra}'
+    addr = args[0].strip()
+    if not valid_addr(addr):
+        return '⛔ Alamat tidak valid. Kirim alamat Solana kreator (32–44 karakter).'
+    if addr in entries:
+        return f'⛔ Alamat {addr[:12]}… sudah ada di blacklist.'
+    entries.append(addr)
+    try:
+        with open(BLACKLIST_FILE, 'w') as f:
+            for e in entries:
+                f.write(e + '\n')
+    except OSError as e:
+        return f'⛔ Gagal menyimpan: {e}'
+    return (f'✅ Kreator {addr[:12]}… masuk blacklist.\n'
+            f'Bot pump menolak koin dari kreator ini mulai loop berikutnya '
+            f'(total {len(entries)} alamat).')
+
+
 def handle(text):
-    cmd = text.strip().split()[0].split('@')[0]
+    parts = text.strip().split()
+    cmd = parts[0].split('@')[0]
     if cmd == '/status':
         return cmd_status()
+    if cmd == '/blacklist':
+        return cmd_blacklist(parts[1:])
     if cmd == '/help':
         return ('Perintah:\n'
                 '/status — saldo, posisi & PnL kedua bot\n'
-                '/help — pesan ini')
+                '/blacklist <alamat> — blacklist kreator (kosongkan untuk lihat daftar)\n'
+                '/help — pesan ini\n\n'
+                'Bot pump mode MANUAL: tiap ±25% ada notif + tombol '
+                'JUAL/HOLD langsung di chat.')
     return None
+
+
+def request_pump_sell(pos_id):
+    """Tulis permintaan jual pump ke sell_requests.json (dibaca bot tiap loop).
+
+    Return True bila permintaan baru ditulis, False bila sudah ada.
+    """
+    reqs = []
+    try:
+        with open(PUMP_SELL_REQ) as f:
+            reqs = json.load(f)
+    except (OSError, ValueError):
+        reqs = []
+    if any(r.get('pos_id') == pos_id for r in reqs):
+        return False
+    reqs.append({'pos_id': pos_id, 'ts': time.time(), 'via': 'telegram'})
+    tmp = PUMP_SELL_REQ + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(reqs, f)
+    os.replace(tmp, PUMP_SELL_REQ)
+    return True
+
+
+def answer_callback(cq_id, text):
+    try:
+        tg('answerCallbackQuery',
+           {'callback_query_id': cq_id, 'text': text})
+    except Exception as e:
+        print(f'[listener] answerCallback gagal: {e}')
+
+
+def strip_buttons(chat_id_, message_id):
+    """Cabut tombol inline dari pesan (cegah double-tap)."""
+    try:
+        tg('editMessageReplyMarkup',
+           {'chat_id': chat_id_, 'message_id': message_id,
+            'reply_markup': {'inline_keyboard': []}})
+    except Exception as e:
+        print(f'[listener] strip buttons gagal: {e}')
+
+
+def handle_callback(cq):
+    data = cq.get('data') or ''
+    cq_id = cq.get('id')
+    msg = cq.get('message') or {}
+    mid = msg.get('message_id')
+    cid = (msg.get('chat') or {}).get('id')
+    if data.startswith('pump_sell:'):
+        pos_id = data.split(':', 1)[1]
+        if request_pump_sell(pos_id):
+            answer_callback(cq_id, '⏳ Jual diminta — dieksekusi loop berikutnya')
+        else:
+            answer_callback(cq_id, '⏳ Sudah diminta, tunggu eksekusi')
+        if mid and cid:
+            strip_buttons(cid, mid)
+        print(f'[listener] tombol JUAL pos {pos_id}', flush=True)
+    elif data.startswith('pump_hold:'):
+        pos_id = data.split(':', 1)[1]
+        answer_callback(cq_id, '✋ Hold — lanjut pantau')
+        print(f'[listener] tombol HOLD pos {pos_id}', flush=True)
 
 
 def main():
@@ -129,6 +238,16 @@ def main():
             data = tg('getUpdates', {'offset': offset, 'timeout': 30})
             for u in data.get('result', []):
                 offset = max(offset, u.get('update_id', 0) + 1)
+                cq = u.get('callback_query')
+                if cq:
+                    cchat = ((cq.get('message') or {}).get('chat') or {}).get('id')
+                    if str(cchat) != me:
+                        continue
+                    try:
+                        handle_callback(cq)
+                    except Exception:
+                        traceback.print_exc()
+                    continue
                 msg = u.get('message') or {}
                 if str((msg.get('chat') or {}).get('id')) != me:
                     continue

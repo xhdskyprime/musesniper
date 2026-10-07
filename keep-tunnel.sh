@@ -2,6 +2,10 @@
 # keep-tunnel.sh — pastikan tunnel dashboard hidup; restart bila mati.
 # Dipanggil oleh cron tiap 5 menit. URL terbaru disimpan di data/tunnel_url.txt
 cd ~/workspace/sniper-bot || exit 1
+# jeda manual oleh user — dashboard mati, tunnel tidak diperlukan
+if [ -f data/PAUSED ]; then
+  exit 0
+fi
 
 if pgrep -f "[l]ocalhost:5001" >/dev/null 2>&1; then
   url=$(grep -aoE 'https://[a-z0-9]+\.lhr\.life' /tmp/dash-tunnel.log 2>/dev/null | tail -1)

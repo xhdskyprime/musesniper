@@ -2,6 +2,15 @@
 # keep-bot.sh — pastikan sniper bot (sniper-bot) hidup dan log-nya jalan; restart bila mati/macet.
 # Pola pgrep memakai path proyek agar tidak tertukar dengan pump-sniper.
 cd ~/workspace/sniper-bot || exit 1
+# jeda manual oleh user — jangan restart
+if [ -f data/PAUSED ]; then
+  exit 0
+fi
+# Satu instance keeper saja dalam satu waktu (lihat penjelasan di
+# ~/workspace/pump-sniper/keep-pump.sh): sniper-guardian dan
+# sniper-tunnel-notifier sama-sama menjalankan script ini tiap 5 menit.
+exec 9>"$PWD/data/.keep-bot.lock"
+flock -n 9 || exit 0
 # Pakai venv di home (persist antar-restart VM); JANGAN pakai system python3
 # karena package system-wide (flask dsb.) hilang tiap VM diganti.
 PY="$HOME/workspace/sniper-bot/venv/bin/python"

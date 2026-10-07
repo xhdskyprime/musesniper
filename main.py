@@ -1,4 +1,5 @@
 """Loop utama sniper bot (paper trading). Jalankan: python3 main.py"""
+import os
 import time
 import traceback
 
@@ -46,6 +47,10 @@ def scan_once(eng):
 
 
 def main():
+    paused_flag = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'PAUSED')
+    if os.path.exists(paused_flag):
+        print('PAUSED flag aktif — bot tidak dijalankan. Hapus data/PAUSED untuk resume.', flush=True)
+        return
     eng = Engine()
     print(f'=== SNIPER PAPER BOT mulai | modal virtual ${config.STARTING_CASH:.2f} ===')
     notifier.send(f'🤖 <b>Sniper paper-bot mulai</b>\nModal virtual ${config.STARTING_CASH:.0f}. Mode demo, tanpa uang asli.')
